@@ -1,0 +1,155 @@
+import pandas as pd
+import numpy as np
+
+import matplotlib.pyplot as plt
+
+# these are the objects we need to impute missing data
+# with sklearn
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+
+# to split the datasets
+from sklearn.model_selection import train_test_split
+
+cols_to_use = [
+    'OverallQual', 'TotalBsmtSF', '1stFlrSF', 'GrLivArea', 'WoodDeckSF',
+    'BsmtUnfSF', 'LotFrontage', 'MasVnrArea', 'GarageYrBlt', 'SalePrice'
+]
+
+data = pd.read_csv('/content/train.csv', usecols=cols_to_use)
+
+cols_to_use.remove('SalePrice')
+
+X_train, X_test, y_train, y_test = train_test_split(data[cols_to_use], # just the features
+                                                    data['SalePrice'], # the target
+                                                    test_size=0.3, # the percentage of obs in the test set
+                                                    random_state=0) # for reproducibility
+
+# Now we impute the missing values with SimpleImputer
+
+# create an instance of the simple imputer
+# we indicate that we want to impute with the median
+imputer = SimpleImputer(strategy='median')
+
+# we fit the imputer to the train set
+# the imputer will learn the median of all variables
+imputer.fit(X_train[cols_to_use])
+
+X_train = imputer.transform(X_train)
+X_test = imputer.transform(X_test)
+
+X_train, X_test, y_train, y_test = train_test_split(data[cols_to_use],# predictors only
+                                                    data['SalePrice'],
+                                                    test_size=0.3,
+                                                    random_state=0)
+                                                    
+# first we need to make lists, indicating which features
+# will be imputed with each method
+
+numeric_features_mean = ['LotFrontage']
+numeric_features_median = ['MasVnrArea', 'GarageYrBlt']
+
+# then we put the features list and the transformers together
+# using the column transformer
+
+# we need to add remainder = True to indicate what we want
+# ALL the columns returned at the end of the transformation
+# and not just the engineered ones, which is the default
+# behaviour of ColumnTransformer. 
+
+preprocessor = ColumnTransformer(transformers=[
+    ('mean_imputer', SimpleImputer(strategy='mean'), numeric_features_mean),
+    ('median_imputer', SimpleImputer(strategy='median'), numeric_features_median)
+], remainder='passthrough')
+
+preprocessor.fit(X_train)
+
+remainder_cols = [cols_to_use[c] for c in [0, 1, 2, 3, 4, 5]]
+
+pd.DataFrame(X_train,
+             columns = numeric_features_mean+numeric_features_median+remainder_cols).head()
+             
+import pandas as pd
+import numpy as np
+
+# import classes for imputation
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+
+# import extra classes for modelling
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.linear_model import Lasso
+from sklearn.model_selection import train_test_split, GridSearchCV
+
+np.random.seed(0)
+data = pd.read_csv('/content/train.csv')
+
+# find categorical variables
+# those of type 'Object' in the dataset
+features_categorical = [c for c in data.columns if data[c].dtypes=='O']
+
+# find numerical variables
+# those different from object and also excluding the target SalePrice
+features_numerical = [c for c in data.columns if data[c].dtypes!='O' and c !='SalePrice']
+
+# inspect the categorical variables
+
+data[features_categorical].head()
+
+data[features_numerical].head()
+
+X_train, X_test, y_train, y_test = train_test_split(
+    data.drop('SalePrice', axis=1),  # just the features
+    data['SalePrice'],  # the target
+    test_size=0.3,  # the percentage of obs in the test set
+    random_state=0)  # for reproducibility
+
+# We create the preprocessing pipelines for both
+# numerical and categorical data
+
+# adapted from Scikit-learn code available here under BSD3 license:
+# https://scikit-learn.org/stable/auto_examples/compose/plot_column_transformer_mixed_types.html
+
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())])
+
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('numerical', numeric_transformer, features_numerical),
+        ('categorical', categorical_transformer, features_categorical)])
+
+# Note that to initialise the pipeline I pass any argument to the transformers.
+# Those will be changed during the gridsearch below.
+
+clf = Pipeline(steps=[('preprocessor', preprocessor),
+                      ('regressor', Lasso(max_iter=2000))])
+                      
+# now we create the grid with all the parameters that we would like to test
+
+param_grid = {
+    'preprocessor__numerical__imputer__strategy': ['mean', 'median'],
+    'preprocessor__categorical__imputer__strategy': ['most_frequent', 'constant'],
+    'regressor__alpha': [10, 100, 200],
+}
+
+grid_search = GridSearchCV(clf, param_grid, cv=5, iid=False, n_jobs=-1, scoring='r2')
+
+# cv=3 is the cross-validation
+# no_jobs =-1 indicates to use all available cpus
+# scoring='r2' indicates to evaluate using the r squared
+
+# and now we train over all the possible combinations of the parameters above
+grid_search.fit(X_train, y_train)
+
+# and we print the best score over the train set
+print(("best linear regression from grid search: %.3f"
+       % grid_search.score(X_train, y_train)))
+best linear regression from grid search: 0.933
+
